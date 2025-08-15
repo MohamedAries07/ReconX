@@ -9,7 +9,7 @@ import dns.resolver
 import streamlit as st
 
 # ---------- Page setup & cyber styling ----------
-st.set_page_config(page_title="ReconX — Cyber Recon Suite", page_icon="🕵️", layout="wide")
+st.set_page_config(page_title="ReconX — Cyber Recon Suite", page_icon=None, layout="wide")
 
 CYBER_CSS = """
 <style>
@@ -49,7 +49,7 @@ input, textarea {
 </style>
 """
 st.markdown(CYBER_CSS, unsafe_allow_html=True)
-st.markdown('<div class="cyber-title">🔍 ReconX</div>', unsafe_allow_html=True)
+st.markdown('<div class="cyber-title">ReconX</div>', unsafe_allow_html=True)
 st.markdown('<div class="cyber-sub">Advanced WHOIS & DNS Reconnaissance — stylish · smooth · cyber</div>', unsafe_allow_html=True)
 st.divider()
 
@@ -71,9 +71,7 @@ def safe_text(x):
         return str(x)
 
 def to_downloads(data_dict):
-    # JSON
     json_bytes = json.dumps(data_dict, indent=2, ensure_ascii=False, default=str).encode("utf-8")
-    # CSV (flatten naive)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Section","Key","Value"])
@@ -89,7 +87,7 @@ def to_downloads(data_dict):
     csv_bytes = output.getvalue().encode("utf-8")
     return json_bytes, csv_bytes
 
-# ---------- Recon functions (cached where helpful) ----------
+# ---------- Recon functions ----------
 @st.cache_data(ttl=600, show_spinner=False)
 def do_whois(domain: str):
     return whois.whois(domain)
@@ -113,7 +111,6 @@ def resolve_ip(domain: str):
 
 @st.cache_data(ttl=600, show_spinner=False)
 def reverse_ip(ip: str):
-    # Free service (rate limited) — may fail if abused.
     try:
         r = requests.get(f"https://api.hackertarget.com/reverseiplookup/?q={ip}", timeout=15)
         if r.status_code == 200 and r.text.strip():
@@ -159,7 +156,6 @@ def ssl_certificate(domain: str):
         with socket.create_connection((domain, 443), timeout=5) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                 cert = ssock.getpeercert()
-        # Normalize key info
         def dn_to_str(seq):
             return ", ".join("=".join(x) for i in seq for x in i)
         subject = dn_to_str(cert.get("subject", []))
@@ -207,9 +203,9 @@ def subdomain_bruteforce(domain: str, wordlist: list, max_workers=200, timeout=0
                 found.append({"host": res[0], "A": res[1]})
     return sorted(found, key=lambda x: x["host"])
 
-# ---------- Sidebar controls ----------
+# ---------- Sidebar ----------
 with st.sidebar:
-    st.markdown("### ⚙️ Recon Controls")
+    st.markdown("### Recon Controls")
     domain = st.text_input("Target domain", placeholder="example.com")
     run_btn = st.button("Run Recon", use_container_width=True)
     st.markdown("---")
@@ -251,7 +247,6 @@ if run_btn:
                     f'<span class="cyber-badge">Timestamp</span> `{datetime.datetime.utcnow().isoformat()}Z`',
                     unsafe_allow_html=True)
 
-        # Resolve IP early (many modules need it)
         ip_addr = None
         try:
             ip_addr = resolve_ip(domain)
@@ -262,9 +257,8 @@ if run_btn:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # WHOIS
     if do_mod_whois:
-        with st.expander("🌐 WHOIS"):
+        with st.expander("WHOIS"):
             try:
                 data = do_whois(domain)
                 results["whois"] = dict(data)
@@ -273,17 +267,14 @@ if run_btn:
                 results["whois"] = {"error": str(e)}
                 st.error(f"WHOIS failed: {e}")
 
-    # DNS Records
     if do_mod_dns:
-        with st.expander("📡 DNS Records"):
+        with st.expander("DNS Records"):
             data = dns_records(domain)
             results["dns"] = data
             st.json(data)
 
-    # Subdomain enumeration
     if do_mod_subs:
-        with st.expander("🧭 Subdomain Enumeration"):
-            # Determine wordlist
+        with st.expander("Subdomain Enumeration"):
             wordlist = []
             if sub_src == "Built-in (quick)":
                 wordlist = DEFAULT_SUBS[:max_subs]
@@ -304,20 +295,17 @@ if run_btn:
                 else:
                     st.warning("No subdomains found (with the provided wordlist).")
 
-    # Reverse IP
     if do_mod_rev and ip_addr:
-        with st.expander("🔁 Reverse IP (hosted domains)"):
+        with st.expander("Reverse IP (hosted domains)"):
             data = reverse_ip(ip_addr)
             results["reverse_ip"] = data
             st.json(data)
 
-    # Port Scan
     if do_mod_ports and ip_addr:
-        with st.expander("🧪 Port Scan"):
+        with st.expander("Port Scan"):
             if use_common_ports == "Common list":
                 ports = COMMON_PORTS
             else:
-                # Parse "1-1024, 80,443"
                 def parse_ports(s):
                     out = set()
                     for part in s.split(","):
@@ -347,34 +335,30 @@ if run_btn:
                 else:
                     st.warning("No open ports detected in the selected set.")
 
-    # IP Geo
     if do_mod_geo and ip_addr:
-        with st.expander("🗺️ IP Geolocation"):
+        with st.expander("IP Geolocation"):
             geo = ip_geo(ip_addr)
             results["ip_geo"] = geo
             st.json(geo)
 
-    # SSL Certificate
     if do_mod_ssl:
-        with st.expander("🔐 SSL Certificate"):
+        with st.expander("SSL Certificate"):
             cert = ssl_certificate(domain)
             results["ssl"] = cert
             st.json(cert)
 
-    # Ping
     if do_mod_ping:
-        with st.expander("🏓 Ping / Host Alive"):
+        with st.expander("Ping / Host Alive"):
             p = ping_host(domain if ip_addr is None else ip_addr)
             results["ping"] = p
             st.json(p)
 
-    # Downloads
-    st.markdown("### ⬇️ Export Results")
+    st.markdown("### Export Results")
     results["target"] = {"domain": domain, "ip": ip_addr, "time_utc": datetime.datetime.utcnow().isoformat()+"Z"}
     jbytes, cbytes = to_downloads(results)
     st.download_button("Download JSON", jbytes, file_name=f"reconx_{domain}.json", mime="application/json")
     st.download_button("Download CSV", cbytes, file_name=f"reconx_{domain}.csv", mime="text/csv")
 
-# Nice footer
 st.markdown("---")
 st.caption("ReconX — For authorized security testing only. Built with ❤️ using Python & Streamlit.")
+
